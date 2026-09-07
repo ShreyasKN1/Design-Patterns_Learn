@@ -1,0 +1,44 @@
+             
+			 
+			 
+			 
+			 
+			Whole Flow:
+			 
+			 client
+		        |
+			Load Balancers
+				|
+		 	API Gateway
+				|
+			  Metadata Service
+			|					|
+	Auth Service		Upload Service
+				|
+			Message Queues
+				|
+			Storage Service
+				| 
+			Object Storage[s3/NDFS]
+				|
+		   Metadata DB
+Upload Flow:
+user-> API -> authenticated-> generate file_id-> metadata DB->generate presigned url upload-> client directly uploads to url
+-> successful callback-> metadata update
+Download Flow:
+user-> API->metadata DB -> storagepath-> generate download url-> object storage-> client downloads successfully
+
+Metadata DB:
+user-> userid,user_name,email,quota
+
+file->file_id,file_name,size,mimeType,storagePath,checkSum(validation),currentVersion,createdAt
+
+fileversion->versionId, file_id, size, storagePath,createdAt and checkSum(validation).
+
+sharing-> sharing_id,file_id,permisions,expiry,share_to
+
+folder structure-> folder_id,ownerId,parent_id,name
+
+-> for every object=> user_id/file_id/version
+
+
