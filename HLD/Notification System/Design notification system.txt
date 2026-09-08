@@ -1,0 +1,73 @@
+Design notification system:
+
+questions to ask?
+
+mobile support and website.
+types of notification? push, email or even sms
+able to send 5 million emails, 1 million sms and 10 million push notifications.
+able to receive soft real time data=> user able to receive notification as soon as possible but if not maybe delayed retried but has to receive notification.
+client has ability to opt out of channel if he doesn't wants to receive notification.
+
+So the design is divided into 3 systems here, services->notification system->3 rd party services -> devices+mode of notification.
+we have the flow like -> first system needs to know devices info, contact info or email to register that device
+3rd party service providers comes into picture-> APNs (apple push notification service) for ios, firebase cloud messaging service for androids-> what I know they register and how the system remembers the device using device token-> that is for push notifications.
+for sms notification-> 3rd party service/commercial service-> twilio and nexroma? 
+and for email -> usually org have their own servers/ but many commercial servers->sendGrid maybe 
+
+when user opens app/site-> registers-> info will be gained.
+
+services-> 1 to N -> can be microservices, cron jobs, distributed system which triggers some event
+notification system-> at beginning keep it as one server-> creates APIs for services to push notification->and since notification will be sent via payload example->
+{
+
+"type":"push"
+"content":"This is an email fro successful registration".
+
+}
+
+and how device remembered-> user_id, user_name,created_at, device_id
+ if multiple device logins-> device_id, device_type last_logged_in and user_id identify users.
+make sure 3rd party service providers have good extensibility system-> able to plug and unplug devices whenever possible and also make sure there is alt providers if not available in region
+
+
+Problem with diagram1: single point of failure, notification system
+-> since one server-> handling 1 to n services-> performance issue and slow or loading state often because we wait for some data from one service and some from,others
+-> also difficult to scale db, cache and diff notification component individually.
+
+
+
+so how to make it better?
+remove db and cache from notification system -> separate it, add more notification system srversand enable auto-horizontal scaling{durability}
+make sure we have message queues and worker servers so can handle both retry mechanism as well decouple, buffers and reliable processing.
+slowly keep adding one by one infra 
+
+db-> user metadata, device info and notification, settings 
+cache-> will have very important ref like notification template, device info, user info.
+start from here
+
+since multiple srvers-> now they can easily create APIs fro the services and these APIs have to be authenticated or validated by clients before sending{spam prevention}
+can verify user by their registered email,contact etc
+
+message queues-> take the request from notification server and add it into them for now we have sep queues for sep notification type best for outages, buffers help in large traffic.
+
+workers-> pull notification events from message queues and redirect to resppective providers.
+
+What the system is to provide:
+=>reliability-> no data loss-> as we said earlier the notification has to reach user either delayed or retried but never fail so add notification data-> persistance table-> retry mechanism -> call this table notification log table-> will add this in workers side so they can requeue failed notification events
+=>impossible to add exactly once delivery because of duplicate processing so add one idem key-> eventId
+=>notification template-> building notification from scratch will be problem so->maintain a template-> if it is shipping related one template if it is regarding payment one template{subsription}.
+=> rate limiting is needed here as users receive many notification per day don't want to trigger them to unsubscribe, so add a rate limiter in notification server/system-> server can limit how many req they can send via apis.
+=>notification settings-> user can opt out whenever he feels like by unsubscribing to channel-> dd table user_id, channel,opt_out{boolean flag} has to be validated before sending notification.
+=>secure push notifcation apis->appkey/appsecret-> only verified client able to create push notification with help of apis, prevent spam
+=>monitor queue metrics-> workers auto scaling needed during peak hours.
+
+
+Analytic Service-> track open rate, click rate, engagement and based on these criteria try to make the system better itself
+tracking events: can add status like for processing.
+send->pending->sent->deliver->open->unsubscribe
+	|->error
+
+that's how you respond in system design interview.
+
+
+
