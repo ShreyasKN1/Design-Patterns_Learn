@@ -1,0 +1,88 @@
+News Feed:
+
+So basically news feed-> constantly updating in one place gets latest data in your homepage,
+->News feed can give access to status update, pics, videos, links, app activity,  likes, comments from groups, people,pages that you follow.
+
+Functional Requirements:
+User able to view/like posts, pages, people that he follows
+User able to post his own posts -> which others can see
+Mobile support yes
+How the feed should be sorted{friend updates a post-> reverse chronological order or any measure like topic score}-> start with reverse chronological order
+friend list -> maybe 5k
+DAU:daily active users: 10 million
+posts can be media
+
+Non functional Requirements:
+Secure auth,
+low latency, availability,
+horizontal scaling needed
+caching data most
+
+
+Divide the design flow based on:
+=>feed publishing: user post a post-> data written to cache as well as db-> friend should be able to see it.
+=>newsfeed building-> friend post then we see in reverse chronological order {our news feed is built by aggregating it}.
+
+
+newsfeed API-> communication between client and server
+http based-> allow clients to perform actions-> posting post, retrieving feed latest, adding friends etc
+
+http post-> /posts/post json -> content and one auth_token{authenticate API request}
+
+get/ feed-> auth_token provide as authentication param.
+
+client-> lb-> webservers->
+initial-> 3 services-> post service, fanout service and notification service
+
+user makes a post content->hello through API-> lb distribute traffic to web servers-> redirect to diff internal services-> post service{save in db and cache}-> fan out service-> push content to friend newsfeed->newsfeed stored in cache for fast retrieval->notification service informs ppl new content available and push notifications
+
+Newsfeed building:
+
+newsfeed service-> newsfeed cache
+request for retrieval of news feed via get api-> lb -> webserver redirects to internal service->newsfeed service-> fetch from newsfeed cache via IDs.
+
+only users with validated auth_token able to post posts{posts are limited for certain period}-> appkey and appsecret way?
+
+fanout service->
+fan-out on write(push model}-> if user posts something, immediately updated in both db and cache and others will always receive latest info-> strong consistency
+pros: real time update of data, fetch becomes fast
+cons: hot key problem{friend list big and news feed for all of them slow and time consuming}
+
+fan-out on read(pull model)-> not latest info, they will have slight delay to get latest info{eventual consistency}
+pros: data not pushed to friends no hotkey problem
+cons:not pre computed 
+
+hybrid approach-> 
+push model{majority of users fr fetching the news feed}
+pull model for celeb/ users with huge followers/friends-> avoid system overload 
+consistent hashing-> hot key problem -> evenly data distribution.
+
+Type of db here: grph database-> users and friends traversing through relationship{resoning ability enhanced}
+
+get_user_id from graph db-> get_user_data from user cache filter based on user settings{posts turned off for this friend and user can control close friends only posts}
+ 
+send friend list+ post ID to message queue
+
+fanout workers-> fetch from message queue store  newsfeed data ->cache-> <post_id,user_id> new post appended to table never store raw data on cache only ids.+ configurable limit-> always they want latest data so cache miss is very less.
+
+newsfeed retrieval ->user makes a request for newsfeed update/refresh->API request get/feed-> lb-> web server-> redirect to internal service->newsfeed service-> newsfeedcache
+now u use postid+user_id as we need complete details like post content, post images, profile, username all this in one user newsfeed.
+
+cache architecture: we have diff cache management for diff layers
+newsfeed-> store ids for newsfeed data
+user cache-> can store info on users-> user profile, friend list all that info
+content cache->  store posts and popular in hot cache
+social graph-> relationship data
+action cache-> stores activity data-> user liked, commented, shared post
+counters-> for likes, reply and followers on own posts.
+
+Scaling scenarios: vertical vs horizontal scaling [benefit of horizontal scaling{consistent hashing} wherever needed+durability].
+talk about sharding -> problem with sharding and how evenly distributed data is needed here.
+other tradeoffs:
+services stateless behind lb, cache as much as possible & monitoring -> qps{queries per second during peak hours, how user refreshes feed}.
+
+
+
+
+
+ 
