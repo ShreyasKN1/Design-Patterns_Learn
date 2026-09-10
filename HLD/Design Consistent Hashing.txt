@@ -1,0 +1,108 @@
+Design Consistent Hashing:
+
+so basically horizontal scaling-> adding more instances but the distribution of data/request to be done efficiently and evenly is what consistent hashing is for.
+
+imagine we have n cache servers
+now every req->cache -> hash(key)%n to balance the load n here server pool instances.
+example would be imagine n=3 server0, server1, server2 and 4 keys evenly distribution is needed.
+key0->hash(key0)%3-> maybe 1
+key1->hash(key1)%3->maybe 2
+key2->hash(key2)%3->maybe 0
+key3->hash(key3)%n-> maybe 2 
+for fetch purpose we use the same formula, f(key)%n if fetch key2 again -> hash(key2)%3 returns 0 which is server0 is where we need to fetch.
+the above approach works well with fixed number of servers in pool, but what if new servers added or server goes offline then all keys need redistribution otherwise we try to fetch keys in servers which don't have the key or cache miss
+That's why consistent hashing is needed.
+
+you can call it special type of hashing when hashtable resizing is needed then only k/n keys need to be remapped on average -> k no of keys and n no of slots.
+
+example: we have so many hash fucntions for example take SHA-1 ->provides 2 power 160 -1 hash spaces regardless how big/ small keys are.
+
+same hash function uses server ip/ server name to map servers on the ring.
+
+
+x0....xn => 2 power 160-1 spaces.
+becomes circle as in diagram
+
+		xn|x0
+		  when bent forms a ring structure
+
+to fetch key from server move in clockwise direction from key position to the first server you encounter in the ring now that is where the key is mapped and that server is used to fetch the data.
+
+
+
+Add a server:
+with the help of consistent hashing, whenever you add a new server only fraction of keys need to be redistributed, now for example imagine we have 4 servers
+	      .server4/new server added
+      key4          key1
+
+.server3           .server1
+
+    key3             key2
+
+          .server2 
+before key4 was handled by server1 remember from key location to first server they find is where the key resides, since server 4 added-> only key 4 needed to be redistributed remaining all stays the same key4 -> server4 map.
+
+
+remove a server:
+
+so again if we remove a server only few keys need to be redistributed remaining are kept the same, for example remove server1 then key1 remapped to server2
+
+
+that simple right but problem arises:
+
+=> Problem1:
+consistent size of partitions on ring for all servers-> add or delete 
+partitions-> space between adjacent servers
+
+so like server0 has keys 1-25
+	server1 has keys 26-35
+	server2 has keys 36-50
+
+now imagine server1 removed or goes offline-> after redistritbution all server1 move server2 now server2 has huge partitions, and has to hold keys 26-50keys, the paritition -> 2* what it was before server1 and server2 
+=>problem2:
+
+keys being only in certain positions of the ring 
+remove key4 from diagram and key4 between server2 and server3 -> so distribution is not properly done.
+
+that's why we got virtual nodes-> multiple real nodes that represent server
+
+imagine 2 servers:
+ server0-> s0_0, s0_1 server1-> s1_0, s1_1 these virtual nodes represent their servers
+
+
+when u add them to the ring these nodes responsible for multiple partitions.
+
+             .s1_0
+      key4          key1
+
+     .s0_1           .s0_0
+
+    key3             key2
+
+            .s1_1
+
+key1 clockwise direction from key location to virtual node-> s0_0 represents server0
+key2-> s1_1 represents server1
+key3-> server0
+key4 server1
+which means clockwise direction from key location to find the next closest virtual node encountered on ring.
+
+
+=> measured by standard deviation[how data spreads out]
+then more virtual nodes means less standard deviation[balanced data distribution].
+tradeoff here is more hash space is needed.
+
+
+now similarly add new server/remove madhdre how we find affected keys
+affected range moves from newly added server -> anti clockwise direction[<-]-> to the next server u find on the ring only those keys need redistribution.
+
+Pros:
+horizontal scaling-> evenly distributed data
+hot key problem mitigates-> instead of sharding[imagine 3 popular topics on same shard like iPhone, Samsung and one plus[shard i-t]-> evenly distributed
+
+
+Uses:
+Maglev LB,
+distribution of data across clusters in Cassandra,dynamoDB,
+Akamai CDNs
+Discord chat apps
