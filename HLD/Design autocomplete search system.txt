@@ -1,0 +1,122 @@
+Design autocomplete search system:
+
+Can be functional requirements:
+1) able to support long tail queries, ranking and fuzzy matchups
+2)Real time ranking: streaming signals so to keep ranking fresh
+3)detect and split hot key prefix for even load
+4)horizontal scaling: Sharding needed for prefix ranges.
+5)BG deployment: Zero downtime by index update and traffic switch
+
+can be considered non-functional:
+1)for now we start with single lang support.
+2)Assuming our search would be in lower case letter
+3)spell check/auto correct{not needed for our yoe}
+4)DAU-> 10 million users
+5)highly available even when system offline.
+6)low latency-> query service-> lightning speed.
+7)scalable-> for peak traffic
+8)response time{fb autocomplete system-> ~100ms}
+
+divide the system into data gathering service and query service for small datasets ->
+just query and freq table is enough,
+
+query: freq
+car:	3
+cat:    3
+can:    1
+
+now when query service->when user types ca then top k {decided by max freq} will be displayed here car and cat.
+
+for large data-set
+trie data structure best->tree like DS
+start with an empty as root
+->26 possible characters,
+every children node is either a word or prefix string.
+every node should also be associated with the freq.
+as in diagram
+
+	                   ___//emptystring
+	                    |
+          __________________|________________________
+         t                                           w
+    |                   |                            |     
+    |                   |                            |
+                                                    wi 
+   to                  tr
+    |                  |                            |
+            _________________                 ____________
+    |      |          |      |               |            |
+toy:10     try:15   tre     tru             win:20        wis
+		      |       |                            |
+		  tree:25   true:35                       wish:25
+	
+{sorry for bad diagram, but you get it}
+
+three things need to be noted here,
+p->length of prefix
+n-> no of nodes in the trie
+c-> no of children nodes for that node
+
+so basic flow-> find prefix-> search the subtree for all valid child, sort child and return top-k=> O(p)+O(n)+O(clogc)
+for example top 2 for "tr" becomes -> tree,true,try after sorting -> but we need top freq one -> so 35 and 25 i.e. tree and true will show up,
+
+how to make it better-> keep prefix length limit to 50-> O(p)-> O(constant)->O(1)
+associate every node with their child sorted with freq => tr node will have value {try:15,tree:25,true:35}, tre wil have all child nodes key,freq->{tree:25}
+again return top-k now from node becomes O(1)
+
+
+Data gathering Service here doesn't change much once trie has been built, only freq changes usually[twitter autocomplete system always has update real time suggestions even there it is seen that trie ds doesn't change much, just build trie from underlying analytics logs]
+flow:
+analytics log-> aggregators->aggregated data->workers-> weekly update-> Trie DB-> fast read/retrieval->weekly snapshot of db->trie cache
+
+ANalytic log
+query    timestamp
+tree      2026....
+try        2026...
+
+then after aggregators
+query   timestamp freq
+tree     2026       4000
+try      2026      1000
+
+usually this design works in multiple cases and considered as good design-> but for twitter autocomplete suggestions working on real time-> aggregators->aggregate data->short interval of time
+
+workers:perform async job in short intervals of time, responsible for building trie and storing them in db.
+
+
+Db choice:
+documentDB->snapshot of trie->seriliased->stored in db
+{mongoDB}
+key-value pairs-> prefix associated/mapped to key, node-> values
+{hash-table}			key   value
+			try    30
+
+Query Service: lightning speed return response, so
+can be done either using
+Ajax req->send/receive data without complete reload of page.
+Broswer caching-> since the search suggestion like users activity based doesn't change much in time-> stored in browser cache{not going deep here, but u can see it as cache}
+{used by google search engine}
+
+for Large Scale systems: data sampling.
+
+We know how add/update works on trie for delete=> add filter before trie cache
+unwanted, violent,etc autocomplete suggestions will be filtered out, we also in async manner remove from db so in next cycle correct data will be used
+APIservers-> filter->trie cache
+
+Scaling and tradeoffs:
+Start with every first character getting their own servers: 26 possible servers -> first level sharding
+then beyond 26 servers we can go on to second level/third level-> aa-an is one shard, ao-az one shard like this
+but uneven distribution because a has more words than w
+so add shard map manager=>lookup database for where row is stored
+
+APIservers -> what shard is it-> shard map manager
+	   ->receive data for shard-> shard1, shard2....
+
+
+for real time:
+->reduce worker datasets by sharding
+->ranking system changes and add more weights to recent search queries
+->since data produced continuously{streaming}, one extra infra needed apache Hadoop mapreducce, apache spark streaming or kafka,etc.
+
+for multi language support-> every Unicode character is used as node in trie-> modern and old.
+remember the above design -> learns through historical query data.
